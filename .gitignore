@@ -1,0 +1,8 @@
+*.rda
+*.dta
+*.dbf
+*.csv
+*.sqlite
+*.xls*
+*.rds
+*.swp
