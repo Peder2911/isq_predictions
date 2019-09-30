@@ -6,3 +6,6 @@
 *.xls*
 *.rds
 *.swp
+*.pdf
+*.html
+*.tex

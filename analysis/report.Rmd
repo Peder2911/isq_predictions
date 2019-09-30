@@ -1,0 +1,73 @@
+---
+author: 'Peder G. Landsverk'
+date:  
+title: ISQ results reproduction 
+knit: "bookdown::render_book"
+site: bookdown::bookdown_site
+output: 
+   bookdown::pdf_document2
+csl: csl.csl 
+bibliography: cit.bib
+toc-depth: 0
+toc: false
+in_header:
+  \usepackage{afterpage}
+  \newcommand\blankpage{%
+    \null
+    \thispagestyle{empty}%
+    \addtocounter{page}{-1}%
+    \newpage}
+---
+
+```{R, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE)
+knitr::read_chunk('code.R')
+options(xtable.comment = FALSE)
+```
+
+```{R}
+library(evallib)
+library(dplyr)
+library(zoo)
+library(ggplot2)
+library(xtable)
+library(glue)
+```
+
+```{R}
+niter <- 200
+set.seed(1618915)
+```
+
+# Tables 2,4 and figure 4 
+
+## Table 2
+
+```{R table_2, results = "asis"}
+```
+
+Table 2 from @hegre_predicting_2013, with a single model, between
+`r min(data_t2$year)` and `r max(data_t2$year)`.
+
+
+## Figure 4
+
+```{R figure_4, fig.height = 5, fig.width = 5}
+```
+
+Figure 4 from @hegre_predicting_2013. Incidence predictions between 
+`r min(data_f4$year)` and `r max(data_f4$year)`.
+
+
+## Table 4
+
+```{R, table_4, results = "asis"}
+```
+
+Table 4 from @hegre_predicting_2013. 
+
+
+\newpage
+# Bibliography
