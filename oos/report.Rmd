@@ -1,0 +1,37 @@
+---
+author: 'Peder G. Landsverk'
+date:  
+title: OOS Report 
+output: 
+   pdf_document
+---
+
+```{R, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      message = FALSE)
+knitr::read_chunk('code.R')
+options(xtable.comment = FALSE)
+```
+
+```{R}
+library(evallib)
+library(dplyr)
+library(zoo)
+library(ggplot2)
+library(xtable)
+library(glue)
+library(knitr)
+library(kableExtra)
+library(stringr)
+library(RSQLite)
+library(tidyr)
+```
+
+```{R}
+niter <- 2000 
+set.seed(1618915)
+```
+
+```{R, table_2, results = "asis"}
+```

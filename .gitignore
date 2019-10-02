@@ -1,3 +1,4 @@
+
 *.rda
 *.dta
 *.dbf
@@ -9,3 +10,5 @@
 *.pdf
 *.html
 *.tex
+analysis/predActual.R
+oos/search/*
