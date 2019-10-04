@@ -1,24 +1,7 @@
-#!/usr/bin/Rscript
 
-shh <- suppressPackageStartupMessages
-library(RSQLite)
-shh(library(dplyr))
-
-# =================================================
-
-# Creates prepped.rds in data, which is a file with
-# predictions and results for each country-year.
-
-# This file can be used for further analysis.
-
-#' getfrom
-#' 
-#' Just a context-function that grabs q from the db
-getfrom <- function(q,sqlite){
-   con <- dbConnect(SQLite(),sqlite)
-   res <- dbGetQuery(con,q)
-   dbDisconnect(con)
-   res
+either <- function(data_t2,a,b){
+   as.numeric(data_t2[[as.character(substitute(a))]] | 
+              data_t2[[as.character(substitute(b))]])
 }
 
 #' rollingFlip 
@@ -100,66 +83,3 @@ escalation <- function(data,...){
 #'
 #' Throwaway function to replace missing values
 fixna <- function(x){ifelse(is.na(x),0,x)}
-
-# =================================================
-DB <- "data/isq.sqlite"
-
-predictions <- "
-   SELECT DISTINCT
-      CAST(gwcode AS INTEGER) || '-' || CAST(year AS INTEGER) AS cntryyear,
-      *
-   FROM isq_old 
-   WHERE year < 2010 AND year > 2000
-   " %>%
-   getfrom(DB)
-
-occurrence <- "
-   SELECT DISTINCT 
-      gwcode_loc || '-' || year AS cntryyear,
-      year,
-      MAX(intensity_level) AS intensity_level
-   FROM acd
-   WHERE year < 2010  AND year > 2000
-   GROUP BY
-      cntryyear 
-   " %>%
-   getfrom(DB) %>%
-   mutate(minor_actual = as.numeric(intensity_level == 1),
-          major_actual = as.numeric(intensity_level == 2)) %>%
-   select(cntryyear,minor_actual,major_actual)
-
-# =================================================
-
-cinfo <- "
-   SELECT 
-      countries.gwcode,
-      name,
-      regions.regionname
-   FROM countries
-   JOIN regions ON countries.isqregion = regions.isqregion
-   " %>%
-   getfrom(DB)
-
-pred_actual <- merge(predictions,occurrence,by="cntryyear",all.x = TRUE) %>%
-   merge(cinfo,by = "gwcode") %>%
-   unique() %>%
-   rename(minor_prob = minor,
-          major_prob = major) %>%
-   mutate( minor_pred_30 = as.numeric(minor_prob > 0.3),
-          minor_pred_50 = as.numeric(minor_prob > 0.5),
-          major_pred_30 = as.numeric(major_prob > 0.3),
-          major_pred_50 = as.numeric(major_prob > 0.5))
-
-for(v in c("minor_actual","major_actual")){
-   pred_actual[[v]] <- fixna(pred_actual[[v]]) 
-}
-
-pred_actual <- pred_actual %>%
-   group_by(gwcode) %>%
-   onsetAndTerm(minor_actual,major_actual,
-                minor_pred_50,minor_pred_30,
-                major_pred_50,major_pred_30) %>%
-   escalation(actual, pred_30, pred_50)
-
-saveRDS(pred_actual,"data/prepped.rds")
-

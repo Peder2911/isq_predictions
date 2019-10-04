@@ -10,26 +10,22 @@ either <- function(data_t2,a,b){
 
 data_t2 <- data_t2_full %>% filter(year>2010)
 
-incidence_auc_1 <- bootstrappedROC(data_t2_full$combined, either(data_t2_full,
+incidence_auc_1 <- aucWithCI(data_t2_full$combined, either(data_t2_full,
                                                         major_actual,
-                                                        minor_actual),
-                                   parallel = TRUE, n = niter)
+                                                        minor_actual))
 
 
-onset_auc <- bootstrappedROC(data_t2$combined, either(data_t2, 
+onset_auc <- aucWithCI(data_t2$combined, either(data_t2, 
                                              onset_major_actual,
-                                             onset_minor_actual),
-                             parallel = TRUE, n = niter)
+                                             onset_minor_actual))
 
-term_auc <- bootstrappedROC(data_t2$combined,either(data_t2,
+term_auc <- aucWithCI(data_t2$combined,either(data_t2,
                                            term_major_actual,
-                                           term_minor_actual),
-                            parallel = TRUE, n = niter)
+                                           term_minor_actual))
 
-incidence_auc_2 <- bootstrappedROC(data_t2$combined,either(data_t2,
+incidence_auc_2 <- aucWithCI(data_t2$combined,either(data_t2,
                                                   major_actual,
-                                                  minor_actual),
-                                   parallel = TRUE, n = niter)
+                                                  minor_actual))
 
 p50 <- list(tpr = withConfmat(either(data_t2,major_pred_50,minor_pred_50),
                          either(data_t2,major_actual,minor_actual), recall),
@@ -42,21 +38,29 @@ p30 <- list(tpr = withConfmat(either(data_t2,major_pred_30,minor_pred_30),
                           either(data_t2,major_actual,minor_actual), fallout))
 
 tab <- tibble::tibble(
-   AUC = c(incidence_auc_2$auc$score,
-         onset_auc$auc$score,
-         term_auc$auc$score),
-   `0.25th quantile` = c(incidence_auc_2$auc$quantiles[1],
-                         onset_auc$auc$quantiles[1],
-                         term_auc$auc$quantiles[1]),
-   `97.5th quantile` = c(incidence_auc_2$auc$quantiles[2],
-                         onset_auc$auc$quantiles[2],
-                         term_auc$auc$quantiles[2]))
+   AUC = c(incidence_auc_2$score,
+         onset_auc$score,
+         term_auc$score),
+   `0.25th` = c(incidence_auc_2$quantiles[1],
+                         onset_auc$quantiles[1],
+                         term_auc$quantiles[1]),
+   `97.5th` = c(incidence_auc_2$quantiles[2],
+                         onset_auc$quantiles[2],
+                         term_auc$quantiles[2]),
+   `TPR_5` = c(round(p50$tpr, digits = 3),rep("-",2)),
+   `FPR_5` = c(round(p50$fpr, digits = 3),rep("-",2)),
+   `TPR_3` = c(round(p30$tpr, digits = 3),rep("-",2)),
+   `FPR_3` = c(round(p30$fpr, digits = 3),rep("-",2)))
+
+
+fnames <- names(tab)
+fnames[c(4,6)] <- "TPR"
+fnames[c(5,7)] <- "FPR"
 
 row.names(tab) <- c("Incidence", "Onset", "Termination")
 
-capt <- glue::glue("Bootstrap AUC scores ({niter} random draws)")
-class(capt) <- "character"
-xtable::xtable(tab, caption = capt)
+knitr::kable(tab,booktabs = TRUE, digits = 3, col.names = fnames) %>%
+   add_header_above(c("","","Quantiles" = 2,"0.5" = 2, "0.3" = 2))
 
 ## @knitr table_4
 
@@ -70,22 +74,31 @@ source("R/evallib.R")
 regions <- unique(data_t4$regionname)
 names(regions) <- regions
 
-results <- lapply(regions, function(region){
+region_results <- lapply(regions, function(region){
       sub <- data_t4[data_t4$regionname == region,]
-      bootstrappedROC(sub$combined, as.numeric(sub$major_actual | sub$minor_actual),
-                     parallel = TRUE, n = niter)
-   })
+      res <- aucWithCI(sub$combined, as.numeric(sub$major_actual | sub$minor_actual))
+      getMetric <- function(data,metric,thresh){
+         withConfmat(as.numeric(data[[paste0("major_pred_",thresh)]]|data[[paste0("minor_pred_",thresh)]]),
+                     as.numeric(data$major_actual|data$minor_actual), metric)
+      }
+      res$q1 <- res$quantiles[1]
+      res$q2 <- res$quantiles[2]
+      res$quantiles <- NULL
+      res$tpr_50 <- getMetric(sub,recall,"50") 
+      res$fpr_50 <- getMetric(sub,fallout,"50") 
+      res$tpr_30 <- getMetric(sub,recall,"30") 
+      res$fpr_30 <- getMetric(sub,fallout,"30") 
+      res
+   }) %>%
+   bind_rows()
+region_results <- cbind(regions,region_results)
+row.names(region_results) <- NULL
 
-results <- tibble::tibble(regionname = regions,
-                          score = sapply(results,function(x) x$auc$score),
-                          lower = sapply(results,function(x) x$auc$quantiles[1]),
-                          upper = sapply(results,function(x) x$auc$quantiles[2]))
+fnames <- c("Region","AUC", "0.25th","97.5th","TPR","FPR","TPR","FPR")
 
-names(results) <- c("Region Name", "AUC", "0.25th","97.5th")
-
-kable(results, format = "latex", booktabs = TRUE, digits = 4) %>%
-   kable_styling(latex_options = c("hold_position")) %>%
-   add_header_above(c("","","Quantiles" = 2))
+kable(region_results, format = "latex", booktabs = TRUE, digits = 3, col.names = fnames)%>%
+   #kable_styling(latex_options = c("hold_position")) %>%
+   add_header_above(c("","","Quantiles" = 2,".50" = 2, ".30" = 2))
 
 ## @knitr figure_4
 

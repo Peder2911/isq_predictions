@@ -28,7 +28,7 @@ in_header:
 ---
 
 ```{R}
-niter <- 20000
+niter <- 2000
 set.seed(1618915)
 ```
 
@@ -71,7 +71,7 @@ Table 2 from @hegre_predicting_2013, with a single model, between
 \newpage
 ## Figure 4
 
-```{R figure_4, fig.height = 5, fig.width = 5}
+```{R, figure_4, fig.height = 5, fig.width = 5}
 ```
 
 Figure 4 from @hegre_predicting_2013. Incidence predictions between 
