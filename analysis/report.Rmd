@@ -2,10 +2,7 @@
 author: 'Peder G. Landsverk'
 date:  
 title: ISQ results reproduction 
-knit: "bookdown::render_book"
-site: bookdown::bookdown_site
-output: 
-   bookdown::pdf_document2
+output: pdf_document
 csl: csl.csl 
 bibliography: cit.bib
 toc-depth: 0
@@ -25,13 +22,21 @@ in_header:
    - \usepackage[normalem]{ulem}
    - \usepackage{makecell}
    - \usepackage{xcolor}
+   - \usepackage{booktabs}
 ---
 
 ```{R}
-niter <- 2000
+niter <- 20
 set.seed(1618915)
-```
 
+# These options affect plots that are saved to ./plots 
+DEVICE <- "pdf"
+PLOTHEIGHT <- 7 
+PLOTWIDTH <- 9.9 
+
+PLOTFOLDER <- "plots"
+TABLEFOLDER <- "tables"
+```
 
 ```{R, include = FALSE}
 knitr::opts_chunk$set(echo = FALSE,
@@ -52,43 +57,109 @@ library(xtable)
 library(glue)
 library(knitr)
 library(kableExtra)
+library(gridExtra)
 library(stringr)
 library(RSQLite)
 library(tidyr)
+library(grid)
+library(forcats)
 ```
 
-```{R, prepUpdateData, include = FALSE, echo = FALSE}
+```{R, localFunctions, include = FALSE, echo = FALSE}
+source("functions.R")
 ```
+
+# Setup
+
+```{R, prepData}
+```
+
+The analysis starts with two datasets: Conflict _Occurrence_ data, and conflict
+_Prediction_ data. The Prediction data is based on predicted probabilities from
+the combined model presented in @hegre_predicting_2013:
+
+```{R, showpred, results = "asis", echo = TRUE}
+xtable(head(predictions), booktabs = TRUE)
+```
+
+The occurrence data is a recasted version of the UCDP ACD dataset:
+
+```{R, showact, results = "asis", echo = TRUE}
+xtable(head(occurrence), booktabs = TRUE)
+```
+
+These datasets are merged together by country-year, and with a third dataset to
+get proper countrynames and regionnames. Then, for both minor and minor
+conflict probabilities, two new variables are created: One with a threshold of
+`0.3`, and one with a threshold of `0.5`.  Whenever probabilities exceed a
+threshold, the model is interpreted as predicting an outcome.
+
+```{R, predictionsOccurrence, echo = TRUE}
+```
+
+```{R, fixActualNA}
+```
+
+\newpage
+
+Then, an important function is applied to the `pred_actual` dataset, which is
+used to create `onset` and `termination` values. This function is based on a
+small, simple rolling "flip" function, that yields a positive or negative value
+depending on the previous value in a series of binary values:
+
+```{R, rollingFlip, echo = TRUE}
+```
+
+```{R, onsetTerm}
+```
+
+\newpage
+
+# Reproduction
 
 ## Table 2
 
-```{R table_2, results = "asis"}
+```{R table_2_prep, echo = TRUE} 
 ```
 
-Table 2 from @hegre_predicting_2013, with a single model, between
-`r min(data_t2$year)` and `r max(data_t2$year)`.
+### 2011-2018
+```{R table_2_output, results = "asis"}
+```
+Table 2 from @hegre_predicting_2013, with a single model, between 2011-2018.
+
+### 2016-2018
+```{R table_2_output_16_18, results = "asis"}
+```
+Table 2 showing just 2016-2018.
 
 \newpage
+
 ## Figure 4
 
-```{R, figure_4, fig.height = 5, fig.width = 5}
+```{R, figure_4_prep, echo = TRUE}
 ```
 
-Figure 4 from @hegre_predicting_2013. Incidence predictions between 
-`r min(data_f4$year)` and `r max(data_f4$year)`.
+```{R, figure_4_bothcurves, fig.height = 5, fig.width = 10}
+```
 
+```{R, figure_4_table, results = "asis"}
+```
+
+Extension of figure 4, showing ROC and Precision-Recall curve for the periods 2001-2009, and 2010-2018.
 
 \newpage
 ## Table 3
 
 ```{R, table_3}
-
 ```
 
 \newpage
 ## Table 4
 
-```{R, table_4, results = "asis"}
+```{R, table_4_prep, echo = TRUE}
+```
+
+```{R, table_4_output, results = "asis"}
 ```
 
 Table 4 from @hegre_predicting_2013. 
@@ -96,11 +167,20 @@ Table 4 from @hegre_predicting_2013.
 \newpage
 ## Confusion table 
 
-```{R, confmat, results = "asis"}
+```{R, confmat_prep, echo = TRUE} 
+```
+
+```{R, confmat_output, results = "asis"}
 ```
 
 \newpage
-```{R, figure_5}
+
+## Figure 5 
+
+```{R, figure_5_prep, echo = TRUE} 
+```
+
+```{R, figure_5_output, fig.width = 12, fig.height = 5} 
 ```
 
 \newpage

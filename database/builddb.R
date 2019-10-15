@@ -13,9 +13,21 @@ library(tidyr)
 
 cinfo <- read.csv("data/country_info.csv", stringsAsFactors = FALSE)
 acd <- read.csv("data/ucdp-prio-acd-191.csv", stringsAsFactors = FALSE)
-regioninfo <- read.csv("fixed/region_info.csv", stringsAsFactors = FALSE)
+regioninfo <- read.csv("data/region_info.csv", stringsAsFactors = FALSE)
+
 predictions <- read_dta("data/CountryYearResults.dta")
+oos_predictions <- read_dta("data/predactual_01_09.dta")
+
 cshapes <- read_sf("cshapes/cshapes.shp")
+
+start <- 1946
+end <- 2011
+
+nCountries <- local({
+   read_dta("data/conflict_data.dta") %>%
+      group_by(year) %>%
+      summarize(n_countries = length(unique(gwno)))
+})
 
 # ================================================
 cshapes <- cshapes %>%
@@ -76,6 +88,16 @@ predictions <- predictions %>%
           major = sh_cnt_t2,
           combined = sh_cnt_c)
 
+# ================================================
+# OOS predictions
+# Just remove NAs and select relevant variables.
+
+oos_predictions <- oos_predictions[complete.cases(oos_predictions),] %>%
+   select(gwcode = gwno, year,
+          minor = c1,
+          major = c2,
+          combined = sim)
+
 # =================================================
 con <- dbConnect(SQLite(), "isq.sqlite")
 
@@ -83,5 +105,7 @@ dbWriteTable(con,"countries",countries, overwrite = TRUE)
 dbWriteTable(con,"regions",regions, overwrite = TRUE)
 dbWriteTable(con,"acd",acd, overwrite = TRUE)
 dbWriteTable(con,"isq",predictions, overwrite = TRUE)
+dbWriteTable(con,"oos",oos_predictions, overwrite = TRUE)
+dbWriteTable(con,"ncountries",nCountries, overwrite = TRUE)
 
 dbDisconnect(con)
