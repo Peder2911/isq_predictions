@@ -1,4 +1,5 @@
-
+depr/*
+analysis/depr/*
 *.rda
 *.dta
 *.dbf
@@ -12,3 +13,8 @@
 *.tex
 analysis/predActual.R
 oos/search/*
+database/cshapes/*
+!database/cshapes/.gitkeep
+database/data/*
+!database/data/.gitkeep
+*.log
