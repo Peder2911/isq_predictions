@@ -42,7 +42,7 @@ TABLEFOLDER <- "tables"
 knitr::opts_chunk$set(echo = FALSE,
                       warning = FALSE,
                       message = FALSE)
-knitr::read_chunk('prep.R')
+#knitr::read_chunk('prep.R')
 knitr::read_chunk('code.R')
 options(xtable.comment = FALSE, knitr.table.format = "latex")
 ```
@@ -95,9 +95,6 @@ conflict probabilities, two new variables are created: One with a threshold of
 threshold, the model is interpreted as predicting an outcome.
 
 ```{R, predictionsOccurrence, echo = TRUE}
-```
-
-```{R, fixActualNA}
 ```
 
 \newpage
@@ -184,4 +181,16 @@ Table 4 from @hegre_predicting_2013.
 ```
 
 \newpage
-# Bibliography
+# 2001-2009 replication
+
+In the following i replicate table 2 and table 4 from the original article.
+
+```{R, oos_prep}
+```
+
+```{R, oos_table_2}
+```
+
+```{R, oos_table_4}
+```
+

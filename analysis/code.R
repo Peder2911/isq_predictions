@@ -1,82 +1,49 @@
 
-## @knitr prepData
-DB <- "data/isq.sqlite"
+## @knitr prepData 
+# Here data is retrieved from the database and prepared for analysis.
 
-predictions <- "
-   SELECT DISTINCT
-      CAST(gwcode AS INTEGER) || '-' || CAST(year AS INTEGER) AS cntryyear,
-      *
-   FROM isq 
-   WHERE year <= 2018
-   " %>%
+NITER <- 20
+DB <- "data/pac.sqlite"
+
+predictions <- " SELECT DISTINCT * FROM predictions_2010_2050 WHERE year <= 2018 " %>%
    getfrom(DB)
 
-oos <- "SELECT 
-        CAST(gwcode AS INTEGER) || '-' || CAST(year AS INTEGER) AS cntryyear,
-        *
-        FROM oos" %>% 
+oos <- "SELECT * FROM predictions_2001_2009" %>% 
      getfrom(DB)
 
-occurrence <- "
-   SELECT DISTINCT 
-      gwcode_loc || '-' || year AS cntryyear,
-      year,
-      MAX(intensity_level) AS intensity_level
-   FROM acd
-   WHERE year <= 2018
-   GROUP BY
-      cntryyear 
-   " %>%
-   getfrom(DB) %>%
-   mutate(minor_actual = as.numeric(intensity_level == 1),
-          major_actual = as.numeric(intensity_level == 2)) %>%
-   select(cntryyear,minor_actual,major_actual)
-
-cinfo <- "
-   SELECT 
-      countries.gwcode,
-      name,
-      regions.regionname
-   FROM countries
-   JOIN regions ON countries.isqregion = regions.isqregion
-   " %>%
+occurrence <- "SELECT * FROM acd" %>%
    getfrom(DB)
 
-pred_actual <- merge(predictions,occurrence,by="cntryyear",all.x = TRUE) %>%
-   merge(cinfo,by = "gwcode") %>%
-   unique() %>%
-   rename(minor_prob = minor,
-          major_prob = major) %>%
-   mutate(minor_actual = fixna(minor_actual),
-          major_actual = fixna(major_actual),
-          minor_pred_30 = as.numeric(minor_prob > 0.3),
-          minor_pred_50 = as.numeric(minor_prob > 0.5),
-          major_pred_30 = as.numeric(major_prob > 0.3),
-          major_pred_50 = as.numeric(major_prob > 0.5),
-          either_pred_30 = as.numeric(minor_pred_30 | major_pred_30),
-          either_pred_50 = as.numeric(minor_pred_50 | major_pred_50),
-          either_actual = as.numeric(minor_actual | major_actual))
+cinfo <- "SELECT countries.gwcode, name, regions.regionname FROM countries
+          JOIN regions ON countries.isqregion = regions.isqregion" %>%
+   getfrom(DB)
 
-oos_actual <- merge(oos,occurrence,"cntryyear", all.x = TRUE) %>%
-   merge(cinfo,by="gwcode") %>%
-   unique() %>%
-   rename(minor_prob = minor,
-          major_prob = major) %>%
-   mutate(minor_actual = fixna(minor_actual),
-          major_actual = fixna(major_actual),
-          minor_pred_30 = as.numeric(minor_prob > 0.3),
-          minor_pred_50 = as.numeric(minor_prob > 0.5),
-          major_pred_30 = as.numeric(major_prob > 0.3),
-          major_pred_50 = as.numeric(major_prob > 0.5),
-          either_pred_30 = as.numeric(minor_pred_30 | major_pred_30),
-          either_pred_50 = as.numeric(minor_pred_50 | major_pred_50),
-          either_actual = as.numeric(minor_actual | major_actual))
-
-## @knitr fixActualNA
-
-for(v in c("minor_actual","major_actual")){
-   pred_actual[[v]] <- fixna(pred_actual[[v]]) 
+# ================================================
+# This function "preps" the prediction data by adding binary
+# values for thresholded predictions, merging with occurrence
+# data (ACD) and country info data (for regions / naming),
+# and adding an "either" column that is positive for both minor
+# and major conflict.
+prepPredictionData <- function(predictions,occurrence,cinfo){
+   merge(predictions,occurrence,c("gwcode","year"),all.x = TRUE) %>%
+      merge(cinfo,by="gwcode") %>%
+      unique() %>%
+      rename(minor_prob = minor,
+             major_prob = major) %>%
+      mutate(minor_actual = fixna(minor_actual),
+             major_actual = fixna(major_actual),
+             minor_pred_30 = as.numeric(minor_prob > 0.3),
+             minor_pred_50 = as.numeric(minor_prob > 0.5),
+             major_pred_30 = as.numeric(major_prob > 0.3),
+             major_pred_50 = as.numeric(major_prob > 0.5),
+             either_pred_30 = as.numeric(minor_pred_30 | major_pred_30),
+             either_pred_50 = as.numeric(minor_pred_50 | major_pred_50),
+             either_actual = as.numeric(minor_actual | major_actual))
 }
+
+predictions_2010_2018 <- prepPredictionData(predictions,occurrence,cinfo)
+predictions_2001_2009 <- prepPredictionData(oos,occurrence,cinfo)
+
 
 ## @knitr rollingFlip
 
@@ -125,43 +92,41 @@ onsetAndTerm <- function(data,...){
 
 }
 
-pred_actual <- pred_actual %>%
+predictions_2010_2018 <- predictions_2010_2018 %>%
    group_by(gwcode) %>%
    onsetAndTerm(minor_actual,major_actual,
                 minor_pred_50,minor_pred_30,
                 major_pred_50,major_pred_30) %>%
-   escalation(actual, pred_30, pred_50)
-
+   escalation(actual, pred_30, pred_50) %>%
+   ungroup()
 
 ## @knitr table_2_prep
 
-data_t2_full <- pred_actual
-data_t2 <- data_t2_full %>% filter(year>2010)
+data_t2 <- predictions_2010_2018 %>% filter(year > 2010)
 
 summaryTable <- function(data){
-
    onset_auc <- aucWithCI(data$combined, either(data, 
                                                 onset_major_actual,
                                                 onset_minor_actual))
-
    term_auc <- aucWithCI(data$combined,either(data,
                                               term_major_actual,
                                               term_minor_actual))
-
    incidence_auc <- aucWithCI(data$combined,either(data,
-                                                     major_actual,
-                                                     minor_actual))
-
-   p50 <- list(tpr = withConfmat(either(data,major_pred_50,minor_pred_50),
+                                                   major_actual,
+                                                   minor_actual))
+   p50 <- list(tpr = withConfmat(
+                            either(data,major_pred_50,minor_pred_50),
                             either(data,major_actual,minor_actual), recall),
-               fpr = withConfmat(either(data,major_pred_50,minor_pred_50),
+               fpr = withConfmat(
+                             either(data,major_pred_50,minor_pred_50),
                              either(data,major_actual,minor_actual), fallout))
 
-   p30 <- list(tpr = withConfmat(either(data,major_pred_30,minor_pred_30),
+   p30 <- list(tpr = withConfmat(
+                            either(data,major_pred_30,minor_pred_30),
                             either(data,major_actual,minor_actual), recall),
-               fpr = withConfmat(either(data,major_pred_30,minor_pred_30),
+               fpr = withConfmat(
+                             either(data,major_pred_30,minor_pred_30),
                              either(data,major_actual,minor_actual), fallout))
-
    tibble::tibble(
       AUC = c(incidence_auc$score,
             onset_auc$score,
@@ -187,6 +152,7 @@ renderSummaryTable <- function(table){
       add_header_above(c("","","DeLong Quantiles" = 2,"0.5" = 2, "0.3" = 2))
 }
 
+# These are rendered below:
 tab <- summaryTable(data_t2)
 tab_16_18 <- summaryTable(filter(data_t2, year %in% c(2016,2017,2018)))
 
@@ -202,10 +168,9 @@ x
 
 ## @knitr table_4_prep
 
-data_t4 <- pred_actual
+data_t4 <- predictions_2010_2018
 
 regions <- unique(data_t4$regionname)
-names(regions) <- regions
 
 region_results <- lapply(regions, function(region){
       # Build a list of results of several metrics
@@ -237,23 +202,22 @@ region_results <- cbind(regions,region_results)
 
 ## @knitr table_4_output
 
-row.names(region_results) <- NULL
-fnames <- c("Region","AUC", "0.25th","97.5th","TPR","FPR","TPR","FPR")
+columnNames <- c("Region","AUC", "0.25th","97.5th","TPR","FPR","TPR","FPR")
 
-x <- knitr::kable(region_results, "latex", booktabs = TRUE, digits = 3, col.names = fnames)%>%
-   #kable_styling(latex_options = c("hold_position")) %>%
+x <- knitr::kable(region_results, "latex", 
+                  booktabs = TRUE, digits = 3, 
+                  col.names = columnNames)%>%
    add_header_above(c("","","Quantiles" = 2,".50" = 2, ".30" = 2))
+
 writeLines(x,glue("{TABLEFOLDER}/table_4.tex"))
 x
 
 ## @knitr figure_4_prep
 
-data_f4 <- pred_actual
-plt <- evallib::cintervalplot(data_f4$combined, 
-                              either(data_f4, major_actual, minor_actual),
-                              draws = niter, res = 0.01, parallel = TRUE)
+data_f4 <- predictions_2010_2018
 
-curves <- lapply(list(oos=oos_actual,neo=pred_actual),function(dat){
+curves <- lapply(list(oos = predictions_2001_2009, neo = predictions_2010_2018),
+                 function(dat){
       list(pr = metricCurve(dat$combined,either(dat,minor_actual,major_actual),
                             precision,recall),
            roc = metricCurve(dat$combined,either(dat,minor_actual,major_actual),
@@ -280,18 +244,6 @@ combpr <- ggplot(rbind(curves[[1]]$pr,curves[[2]]$pr),
    geom_path(size = 1.5, alpha = 0.8) + 
    scale_color_manual(values=colors)
 
-aucs <- data.frame(pr = c(
-                     auc(curves[[1]]$pr$precision,
-                         curves[[1]]$pr$recall) %>% abs(),
-                     auc(curves[[2]]$pr$precision,
-                         curves[[2]]$pr$recall) %>% abs()
-                   ),
-                   roc = c(
-                     auc(curves[[1]]$roc$fallout,
-                         curves[[1]]$roc$recall),
-                     auc(curves[[2]]$roc$fallout,
-                         curves[[2]]$roc$recall)
-                   ))
 aucs <- sapply(list(list(curves[[1]]$roc$fallout,curves[[1]]$roc$recall),
                     list(curves[[2]]$roc$fallout,curves[[2]]$roc$recall),
                     list(curves[[1]]$pr$precision,curves[[1]]$pr$recall),
@@ -302,6 +254,7 @@ aucs <- data.frame(Groups = c("01-09","10-18","01-09","10-18"),
                    AUC = abs(aucs))
 
 ## @knitr figure_4_output
+# Deprecated?
 
 auc <- plt$results$auc
 dgts <- 4
@@ -312,9 +265,10 @@ x <- plt$plot +
         y = "Sensitivity",
         title = "Bootstrap ROC curve",
         subtitle = aucCaption, 
-        caption = glue("({niter} random draws)"))
+        caption = glue("({NITER} random draws)"))
 
-ggsave(glue("{PLOTFOLDER}/figure_4.{DEVICE}"),x,device = DEVICE,height = PLOTHEIGHT, width = PLOTWIDTH) 
+ggsave(glue("{PLOTFOLDER}/figure_4.{DEVICE}"), x,
+       device = DEVICE,height = PLOTHEIGHT, width = PLOTWIDTH) 
 
 x
 
@@ -337,12 +291,15 @@ x <- kable(aucs,"latex",booktabs = TRUE, digits = 4) %>%
    kable_styling(latex_options = c("hold_position")) %>%
    pack_rows("ROC Curve",1,2) %>%
    pack_rows("Precision-Recall Curve", 3,4)
+
 writeLines(x,glue("{TABLEFOLDER}/curves_AUCs.tex"))
+
 x
 
 ## @knitr confmat_prep
 
-data_confmat <- pred_actual
+data_confmat <- predictions_2010_2018
+
 regions <- unique(data_confmat$regionname)
 names(regions) <- regions
 regions <- c(".*",regions)
@@ -376,32 +333,26 @@ x
 
 ## @knitr table_3
 
-data_t3 <- pred_actual 
+data_t3 <- predictions_2010_2018 
 
-con <- dbConnect(SQLite(),"data/isq.sqlite")
-latestConflicts <- dbGetQuery(con,"SELECT * FROM acd") %>%
-   mutate(gwcode = as.numeric(gwcode_loc)) %>%
+latestConflicts <- occurrence %>%
    group_by(gwcode) %>% 
    summarize(latestyear = max(year))
 
-before09 <- dbGetQuery(con, "SELECT CAST(gwcode_loc AS INTEGER) AS gwcode,year 
-                             FROM acd
-                             WHERE year < 2010") %>%
+before09 <- occurrence %>%
+   select(gwcode,year) %>%
+   filter(year < 2010) %>%
    group_by(gwcode) %>%
    summarize(before09 = max(year))
 
-dbDisconnect(con)
-
 top50 <- data_t3 %>%
-   ungroup() %>%
    filter(year == 2018) %>%
    merge(latestConflicts, "gwcode") %>%
    merge(before09, "gwcode") %>%
    mutate(`2018` = case_when(
       major_actual == 1 ~ "Major",
       minor_actual == 1 ~ "Minor",
-      TRUE ~ "None"
-      ),
+      TRUE ~ "None"),
       `Before 2018` = ifelse(!is.na(latestyear),
                              as.character(latestyear),
                              " - "),
@@ -427,7 +378,7 @@ x
 
 ## @knitr figure_5_prep
 
-con <- dbConnect(SQLite(),"data/isq.sqlite")
+con <- dbConnect(SQLite(),DB)
 
 # N countries is given by number of unique country-codes in prediction
 # dataset
@@ -436,12 +387,12 @@ nCountries <- dbGetQuery(con,"
                          SELECT * FROM ncountries")
 
 propInConflict <- dbGetQuery(con, "
-   SELECT DISTINCT year, gwcode_loc, MAX(intensity_level) AS intensity_level FROM acd
+   SELECT DISTINCT year, gwcode, MAX(intensity_level) AS intensity_level FROM acd
    WHERE year > 1969
-   GROUP BY year, gwcode_loc") %>%
+   GROUP BY year, gwcode") %>%
    merge(nCountries,"year") %>%
    group_by(year) %>%
-   summarize(countries = length(unique(gwcode_loc)),
+   summarize(countries = length(unique(gwcode)),
              minor = sum(intensity_level == 1),
              major = sum(intensity_level == 2),
              #inminor = (countries - major) / n_countries,
@@ -454,7 +405,7 @@ propInConflict <- dbGetQuery(con, "
    gather(var,val,-year)
 
 propPredicted <- dbGetQuery(con,"
-   SELECT year,minor,major,combined FROM isq
+   SELECT year,minor,major,combined FROM predictions_2010_2050 
    WHERE year > 2008 AND year < 2050") %>%
    merge(nCountries,"year") %>%
    group_by(year) %>%
@@ -469,22 +420,6 @@ propPredicted <- dbGetQuery(con,"
              #comb30 = sum(combined > 0.3) / nCountries) %>%
              inconflict = mean(combined)) %>%
              #inconflict = sum(combined > 0.3) / max(n_countries)) %>%
-   gather(var,val,-year)
-
-propPredicted2 <- dbGetQuery(con,"
-   SELECT year,minor,major,combined FROM isq
-   WHERE year > 2008 AND year < 2050") %>%
-   merge(nCountries,"year") %>%
-   group_by(year) %>%
-   summarise(#major50 = sum(major > 0.5) / nCountries,
-             #major30 = sum(major > 0.3) / nCountries,
-             inmajor = sum(major > 0.3) / max(n_countries),
-             #minor50 = sum(minor > 0.5) / nCountries,
-             #minor30 = sum(minor > 0.3) / nCountries,
-             #inminor = sum(minor > 0.3) / max(n_countries),
-             #comb50 = sum(combined > 0.5) / nCountries,
-             #comb30 = sum(combined > 0.3) / nCountries) %>%
-             inconflict = sum(combined > 0.3) / max(n_countries)) %>%
    gather(var,val,-year)
 
 propInConflict$type <- "Actual"
@@ -524,3 +459,145 @@ fig5 <- ggplot(both,aes(x=year,y=val * 100,color=var, linetype = type)) +
    theme(legend.position = "bottom")
 ggsave(glue("{PLOTFOLDER}/figure_5.{DEVICE}"),fig5,device = DEVICE,height = PLOTHEIGHT, width = PLOTWIDTH) 
 fig5
+
+## @knitr oos_prep
+
+dat <- haven::read_dta("data/predactual_01_09.dta") %>%
+   mutate(minor_actual = as.numeric(conflict == 1),
+          major_actual = as.numeric(conflict == 2)) %>%
+   select(year, gwcode = gwno,
+          minor_prob = c1, major_prob = c2,combined = sim,
+          minor_actual, major_actual) %>%
+   mutate(minor_pred_50 = as.numeric(minor_prob > 0.5),
+          minor_pred_30 = as.numeric(minor_prob > 0.3),
+          major_pred_50 = as.numeric(major_prob > 0.5),
+          major_pred_30 = as.numeric(major_prob > 0.3))
+
+dat <- dat[complete.cases(dat),]
+
+
+pred_actual <- dat %>%
+   group_by(gwcode) %>%
+   onsetAndTerm(minor_actual,major_actual,
+                minor_pred_50,minor_pred_30,
+                major_pred_50,major_pred_30) %>%
+   escalation(actual, pred_30, pred_50) %>%
+   mutate(either_actual = as.numeric(minor_actual | major_actual))
+
+
+## @knitr oos_table_2
+
+predictions_2001_2009_nonfunc <- predictions_2001_2009 %>%
+   group_by(gwcode) %>%
+   onsetAndTerm(minor_actual,major_actual,
+                minor_pred_50,minor_pred_30,
+                major_pred_50,major_pred_30) %>%
+   escalation(actual, pred_30, pred_50) %>%
+   ungroup()
+
+predictions_2001_2009 <- pred_actual
+
+incidence01_09 <- list()
+
+incidence01_09$score <- aucFromPA(predictions_2001_2009$combined, 
+                                  predictions_2001_2009$either_actual)
+
+incidence01_09$quantiles <- pROC::ci.auc(predictions_2001_2009$either_actual, 
+                                         predictions_2001_2009$combined)
+
+subset <- predictions_2001_2009 %>% filter(year > 2006)
+
+onset <- bootstrappedROC(subset$combined, as.numeric(subset$onset_minor_actual |
+                                                     subset$onset_major_actual),
+                         res = 0.1, draws = NITER,
+                         parallel = TRUE)[[2]]
+
+term <- bootstrappedROC(subset$combined, as.numeric(subset$term_minor_actual |
+                                                    subset$term_major_actual),
+                         res = 0.1, draws = NITER,
+                         parallel = TRUE)[[2]]
+
+incidence <- list()
+incidence$score <- aucFromPA(subset$combined, subset$either_actual)
+incidence$quantiles <- pROC::ci.auc(subset$either_actual, subset$combined)
+
+getMetric <- function(data,thresh,metric){ 
+   tpr = withConfmat(as.numeric(data$combined > thresh), 
+                      either(data, major_actual, minor_actual), metric)
+}
+
+getRates <- function(data, functions = list(recall = recall, fallout = fallout), 
+                     digits = NULL){ 
+   lapply(list(th_05 = 0.5, th_03 = 0.3),
+          function(th){
+      lapply(functions,
+             function(met) {
+         m <- getMetric(data,th,met)
+         if(!is.null(digits)){m <- round(m,digits = digits)}
+         m
+      })
+   })
+}
+
+
+rates <- lapply(list(full = predictions_2001_2009,post07 = subset), 
+                function(dat){
+                   getRates(dat)
+                })
+
+
+res <- tibble(Type = c("Incidence",
+                       "Incidence",
+                       "Onset",
+                       "Termination"),
+              Score = c(incidence01_09$score,
+                      incidence$score,
+                      onset$score,
+                      term$score),
+              `0.25th` = c(incidence01_09$quantiles[1],
+                           incidence$quantiles[1],
+                           onset$quantiles[1],
+                           term$quantiles[1]),
+              `97.5th` = c(incidence01_09$quantiles[3],
+                           incidence$quantiles[3],
+                           onset$quantiles[2],
+                           term$quantiles[2]),
+              `TPR > 0.5` = c(rates$full$th_05$recall,
+                      rates$post07$th_05$recall,
+                      NA, NA),
+              `FPR > 0.5` = c(rates$full$th_05$fallout,
+                      rates$post07$th_05$fallout,
+                      NA, NA), 
+              `TPR > 0.3` = c(rates$full$th_03$recall,
+                      rates$post07$th_03$recall,
+                      NA, NA),
+              `FPR > 0.3` = c(rates$full$th_03$fallout,
+                      rates$post07$th_03$fallout,
+                      NA, NA) 
+              )
+
+fixnames <- names(res)
+fixnames[1] <- ""
+fixnames[c(5,7)] <- "TPR"
+fixnames[c(6,8)] <- "FPR"
+
+kable(res, digits = 3, booktabs = TRUE, col.names = fixnames) %>%
+   add_header_above(c(" " = 1, "AUC" = 3, "0.5" = 2, "0.3" = 2)) %>%
+   pack_rows("01-09",1,1) %>%
+   pack_rows("07-09",2,4)
+
+## @knitr oos_table_4
+
+plt <- cintervalplot(predictions_2001_2009$combined, 
+                     predictions_2001_2009$either_actual, res = 0.001)
+plt$plot
+
+## @knitr summaryfigures
+
+summaryRates <- getRates(diq, functions = list(fallout = fallout, 
+                         recall = recall, 
+                         precision = precision, 
+                         accuracy = accuracy),
+                         digits = 3)
+
+

@@ -1,4 +1,5 @@
 depr/*
+secret/*
 analysis/depr/*
 *.rda
 *.dta
@@ -17,4 +18,5 @@ database/cshapes/*
 !database/cshapes/.gitkeep
 database/data/*
 !database/data/.gitkeep
+!database/data/cshapes/.gitkeep
 *.log
