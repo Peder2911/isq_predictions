@@ -45,6 +45,7 @@ knitr::opts_chunk$set(echo = FALSE,
 #knitr::read_chunk('prep.R')
 knitr::read_chunk('code.R')
 options(xtable.comment = FALSE, knitr.table.format = "latex")
+options(knitr.kable.NA = " - ")
 ```
 
 
@@ -185,12 +186,22 @@ Table 4 from @hegre_predicting_2013.
 
 In the following i replicate table 2 and table 4 from the original article.
 
-```{R, oos_prep}
-```
+## Table 2 OOS
+
+The numbers in table 2 deviate slightly from the original numbers. This is caused by
+updates in the UCDP Conflict data set. The version used in this analysis is
+19.1. The conflict years in the United States, except for the conflict year
+2001, have been changed to 0.
 
 ```{R, oos_table_2}
 ```
 
-```{R, oos_table_4}
+## Figure 4 OOS 
+
+This curve has been replicated earlier in the report, see Figure 4 above.
+
+```{R, oos_figure_4, fig.height = 5, fig.width = 5}
 ```
 
+\newpage
+# Bibliography

@@ -11,8 +11,15 @@ predictions <- " SELECT DISTINCT * FROM predictions_2010_2050 WHERE year <= 2018
 oos <- "SELECT * FROM predictions_2001_2009" %>% 
      getfrom(DB)
 
+
+# ================================================
+# Conflict years in the United States, except for 2001, are filtered out. This
+  # is because the conflicts do not occur in the United States proper, even
+  # though the United States is a party to the conflicts. 
+
 occurrence <- "SELECT * FROM acd" %>%
-   getfrom(DB)
+   getfrom(DB) %>%
+   filter(!(gwcode == 2 & ! year == 2001) )
 
 cinfo <- "SELECT countries.gwcode, name, regions.regionname FROM countries
           JOIN regions ON countries.isqregion = regions.isqregion" %>%
@@ -176,7 +183,8 @@ region_results <- lapply(regions, function(region){
       # Build a list of results of several metrics
 
       sub <- data_t4[data_t4$regionname == region,]
-      res <- aucWithCI(sub$combined, as.numeric(sub$major_actual | sub$minor_actual))
+      message(glue::glue("{region}: {unique(as.numeric(sub$major_actual|sub$minor_actual))}"))
+      res <- tryCatch(aucWithCI(sub$combined, as.numeric(sub$major_actual | sub$minor_actual)), error = function(e){list(score = NA, quantiles = c(NA,NA))})
       getMetric <- function(data,metric,thresh){
          # Get metric using a confusion matrix of predictions,
          # given thresh, and actual outcomes. 
@@ -460,42 +468,15 @@ fig5 <- ggplot(both,aes(x=year,y=val * 100,color=var, linetype = type)) +
 ggsave(glue("{PLOTFOLDER}/figure_5.{DEVICE}"),fig5,device = DEVICE,height = PLOTHEIGHT, width = PLOTWIDTH) 
 fig5
 
-## @knitr oos_prep
-
-dat <- haven::read_dta("data/predactual_01_09.dta") %>%
-   mutate(minor_actual = as.numeric(conflict == 1),
-          major_actual = as.numeric(conflict == 2)) %>%
-   select(year, gwcode = gwno,
-          minor_prob = c1, major_prob = c2,combined = sim,
-          minor_actual, major_actual) %>%
-   mutate(minor_pred_50 = as.numeric(minor_prob > 0.5),
-          minor_pred_30 = as.numeric(minor_prob > 0.3),
-          major_pred_50 = as.numeric(major_prob > 0.5),
-          major_pred_30 = as.numeric(major_prob > 0.3))
-
-dat <- dat[complete.cases(dat),]
-
-
-pred_actual <- dat %>%
-   group_by(gwcode) %>%
-   onsetAndTerm(minor_actual,major_actual,
-                minor_pred_50,minor_pred_30,
-                major_pred_50,major_pred_30) %>%
-   escalation(actual, pred_30, pred_50) %>%
-   mutate(either_actual = as.numeric(minor_actual | major_actual))
-
-
 ## @knitr oos_table_2
 
-predictions_2001_2009_nonfunc <- predictions_2001_2009 %>%
+predictions_2001_2009 <- predictions_2001_2009 %>%
    group_by(gwcode) %>%
    onsetAndTerm(minor_actual,major_actual,
                 minor_pred_50,minor_pred_30,
                 major_pred_50,major_pred_30) %>%
    escalation(actual, pred_30, pred_50) %>%
    ungroup()
-
-predictions_2001_2009 <- pred_actual
 
 incidence01_09 <- list()
 
@@ -581,23 +562,17 @@ fixnames[1] <- ""
 fixnames[c(5,7)] <- "TPR"
 fixnames[c(6,8)] <- "FPR"
 
-kable(res, digits = 3, booktabs = TRUE, col.names = fixnames) %>%
+x <- kable(res, "latex", digits = 3, booktabs = TRUE, col.names = fixnames) %>%
    add_header_above(c(" " = 1, "AUC" = 3, "0.5" = 2, "0.3" = 2)) %>%
    pack_rows("01-09",1,1) %>%
    pack_rows("07-09",2,4)
+writeLines(x,"tables/table_2_oos.tex")
+x
 
-## @knitr oos_table_4
+## @knitr oos_figure_4
 
 plt <- cintervalplot(predictions_2001_2009$combined, 
                      predictions_2001_2009$either_actual, res = 0.001)
+ggsave(glue("{PLOTFOLDER}/figure_4_oos.{DEVICE}"), plt$plot,
+       device = DEVICE,height = PLOTHEIGHT, width = PLOTWIDTH) 
 plt$plot
-
-## @knitr summaryfigures
-
-summaryRates <- getRates(diq, functions = list(fallout = fallout, 
-                         recall = recall, 
-                         precision = precision, 
-                         accuracy = accuracy),
-                         digits = 3)
-
-
